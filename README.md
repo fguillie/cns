@@ -1,10 +1,10 @@
 # Kubernetes kubeadm Ansible Playbook
 
-This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pinned component versions selected from a `cns-v*.txt` snapshot.
+This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pinned component versions selected from a `cns_versions/cns-v*.txt` snapshot.
 
 ## Version Matrix
 
-| Component | `cns-v1.34.6.txt` | `cns-v1.35.3.txt` |
+| Component | `cns_versions/cns-v1.34.6.txt` | `cns_versions/cns-v1.35.3.txt` |
 | --- | --- | --- |
 | kubeadm | `v1.34.6` | `v1.35.3` |
 | Kubernetes | `v1.34.6` | `v1.35.3` |
@@ -17,6 +17,7 @@ This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pin
 
 - `inventory/hosts.ini`: host file where you enter server IPs, SSH user, SSH password, and sudo password
 - `group_vars/all.yml`: shared cluster settings
+- `cns_versions/`: checked-in CNS component version snapshots
 - `playbook.yml`: full deployment entry point that runs `kubernetes.yml` and then `gpu-operator.yml`
 - `kubernetes.yml`: Kubernetes, containerd, kubeadm bootstrap, Calico, and worker join playbook
 - `gpu-operator.yml`: Helm and NVIDIA GPU Operator playbook
@@ -89,3 +90,4 @@ The wrapper calls `ansible-playbook playbook.yml` for full installs and `ansible
 - If you want a stable virtual IP or load balancer for the API server, set `control_plane_endpoint` in `group_vars/all.yml`.
 - Kubernetes packages are placed on hold after installation, which is the standard kubeadm baseline.
 - `gpu-operator.yml` expects Kubernetes to be initialized already and will fail fast if `/etc/kubernetes/admin.conf` is missing on the first control-plane node.
+- By default `cns_version_file` points to `cns_versions/cns-v1.34.6.txt`. Override it with another file under `cns_versions/` when needed.

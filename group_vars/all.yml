@@ -1,5 +1,5 @@
 ---
-cns_version_file: cns-v1.34.6.txt
+cns_version_file: cns_versions/cns-v1.34.6.txt
 
 pod_network_cidr: 192.168.0.0/16
 service_cidr: 10.96.0.0/12

@@ -8,7 +8,7 @@
   ansible.builtin.assert:
     that:
       - cns_version_snapshot.stat.exists
-    fail_msg: "CNS snapshot file {{ cns_version_file }} was not found in the repository root."
+    fail_msg: "CNS snapshot file {{ cns_version_file }} was not found under the repository path."
 
 - name: Parse kubeadm version from CNS snapshot
   ansible.builtin.command:

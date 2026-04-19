@@ -31,8 +31,8 @@ Examples:
   ./cns.sh uninstall
   ./cns.sh uninstall-gpu-operator
   ./cns.sh uninstall-kubernetes
-  ./cns.sh install -e cns_version_file=cns-v1.35.3.txt
-  ./cns.sh install-gpu-operator -e cns_version_file=cns-v1.35.3.txt
+  ./cns.sh install -e cns_version_file=cns_versions/cns-v1.35.3.txt
+  ./cns.sh install-gpu-operator -e cns_version_file=cns_versions/cns-v1.35.3.txt
   ./cns.sh uninstall-kubernetes --check
   ./cns.sh uninstall --check
 EOF
