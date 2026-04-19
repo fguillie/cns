@@ -1,0 +1,77 @@
+---
+- name: Resolve component versions from CNS snapshot
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load component versions from CNS snapshot
+      ansible.builtin.include_tasks: tasks/parse_snapshot.yml
+
+- name: Install Helm and the NVIDIA GPU Operator
+  hosts: "{{ groups['kube_control_plane'][0] }}"
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Enforce Ubuntu target hosts
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+        fail_msg: This playbook currently supports Ubuntu hosts only.
+
+    - name: Check that the Kubernetes admin kubeconfig exists
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubernetes_admin_conf
+
+    - name: Fail when Kubernetes has not been initialized
+      ansible.builtin.assert:
+        that:
+          - kubernetes_admin_conf.stat.exists
+        fail_msg: "Kubernetes is not initialized on {{ inventory_hostname }}. Run kubernetes.yml first."
+
+    - name: Download pinned Helm archive
+      ansible.builtin.get_url:
+        url: >-
+          https://get.helm.sh/helm-{{ hostvars['localhost'].helm_version }}-linux-{{
+          helm_arch_map[ansible_architecture] }}.tar.gz
+        dest: /tmp/helm.tgz
+        mode: "0644"
+
+    - name: Extract pinned Helm archive
+      ansible.builtin.unarchive:
+        src: /tmp/helm.tgz
+        dest: /tmp
+        remote_src: true
+
+    - name: Install pinned Helm binary
+      ansible.builtin.copy:
+        src: "/tmp/linux-{{ helm_arch_map[ansible_architecture] }}/helm"
+        dest: /usr/local/bin/helm
+        remote_src: true
+        mode: "0755"
+
+    - name: Add NVIDIA Helm repository
+      ansible.builtin.command:
+        cmd: /usr/local/bin/helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: helm_repo_add
+      changed_when: "'has been added' in helm_repo_add.stdout"
+      failed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command:
+        cmd: /usr/local/bin/helm repo update
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
+
+    - name: Install pinned NVIDIA GPU Operator
+      ansible.builtin.shell: >-
+        /usr/local/bin/helm upgrade --install gpu-operator nvidia/gpu-operator
+        --namespace {{ gpu_operator_namespace }} --create-namespace
+        --version={{ hostvars['localhost'].gpu_operator_version }}
+        --set-json 'node-feature-discovery.gc.tolerations=[{"key":"node-role.kubernetes.io/control-plane","operator":"Equal","value":"","effect":"NoSchedule"}]'
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: gpu_operator_install
+      changed_when: "'STATUS: deployed' in gpu_operator_install.stdout or 'STATUS: pending-install' in gpu_operator_install.stdout"

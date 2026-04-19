@@ -17,9 +17,14 @@ This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pin
 
 - `inventory/hosts.ini`: host file where you enter server IPs, SSH user, SSH password, and sudo password
 - `group_vars/all.yml`: shared cluster settings
-- `playbook.yml`: cluster deployment playbook
-- `uninstall.yml`: cluster teardown playbook
-- `cns.sh`: wrapper script for common install, uninstall, and help commands
+- `playbook.yml`: full deployment entry point that runs `kubernetes.yml` and then `gpu-operator.yml`
+- `kubernetes.yml`: Kubernetes, containerd, kubeadm bootstrap, Calico, and worker join playbook
+- `gpu-operator.yml`: Helm and NVIDIA GPU Operator playbook
+- `tasks/parse_snapshot.yml`: shared CNS snapshot parsing tasks used by both install playbooks
+- `uninstall.yml`: full teardown entry point that runs `uninstall-gpu-operator.yml` and then `uninstall-kubernetes.yml`
+- `uninstall-gpu-operator.yml`: NVIDIA GPU Operator teardown playbook
+- `uninstall-kubernetes.yml`: Calico, Kubernetes, and containerd teardown playbook
+- `cns.sh`: wrapper script for combined or split install and uninstall flows, and help
 
 ## Requirements
 
@@ -38,10 +43,34 @@ This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pin
 ./cns.sh install
 ```
 
+To install only Kubernetes and Calico, run:
+
+```bash
+./cns.sh install-kubernetes
+```
+
+To install the GPU Operator later on an existing cluster, run:
+
+```bash
+./cns.sh install-gpu-operator
+```
+
 To remove everything installed by the deployment playbook, run:
 
 ```bash
 ./cns.sh uninstall
+```
+
+To remove only the GPU Operator, run:
+
+```bash
+./cns.sh uninstall-gpu-operator
+```
+
+To remove Calico, Kubernetes, and containerd, run:
+
+```bash
+./cns.sh uninstall-kubernetes
 ```
 
 To see the available wrapper commands, run:
@@ -50,10 +79,13 @@ To see the available wrapper commands, run:
 ./cns.sh help
 ```
 
-The wrapper calls `ansible-playbook playbook.yml` for installs and `ansible-playbook uninstall.yml` for teardown.
+The wrapper calls `ansible-playbook playbook.yml` for full installs and `ansible-playbook uninstall.yml` for full teardown.
+`playbook.yml` imports `kubernetes.yml` first and then `gpu-operator.yml`.
+`uninstall.yml` imports `uninstall-gpu-operator.yml` first and then `uninstall-kubernetes.yml`.
 
 ## Notes
 
 - The inventory is set up for one control plane node plus optional worker nodes.
 - If you want a stable virtual IP or load balancer for the API server, set `control_plane_endpoint` in `group_vars/all.yml`.
 - Kubernetes packages are placed on hold after installation, which is the standard kubeadm baseline.
+- `gpu-operator.yml` expects Kubernetes to be initialized already and will fail fast if `/etc/kubernetes/admin.conf` is missing on the first control-plane node.

@@ -1,0 +1,189 @@
+---
+- name: Resolve component versions from CNS snapshot
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load component versions from CNS snapshot
+      ansible.builtin.include_tasks: tasks/parse_snapshot.yml
+
+- name: Remove Calico from the first control plane node
+  hosts: "{{ groups['kube_control_plane'][0] }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check whether admin kubeconfig exists
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: admin_kubeconfig
+
+    - name: Remove Calico custom resources
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf delete -f /root/calico-custom-resources.yaml --ignore-not-found=true
+      register: calico_custom_resources_delete
+      changed_when: calico_custom_resources_delete.rc == 0
+      failed_when: false
+      when: admin_kubeconfig.stat.exists
+
+    - name: Remove Calico operator manifest
+      ansible.builtin.command:
+        cmd: >-
+          kubectl --kubeconfig=/etc/kubernetes/admin.conf delete -f
+          https://raw.githubusercontent.com/projectcalico/calico/{{ hostvars['localhost'].calico_version }}/manifests/tigera-operator.yaml
+          --ignore-not-found=true
+      register: calico_operator_delete
+      changed_when: calico_operator_delete.rc == 0
+      failed_when: false
+      when: admin_kubeconfig.stat.exists
+
+- name: Remove Kubernetes node configuration
+  hosts: kube_control_plane:kube_node
+  become: true
+  gather_facts: true
+  vars:
+    remove_prerequisite_packages: false
+    prerequisite_packages:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gpg
+      - software-properties-common
+      - tar
+  tasks:
+    - name: Reset kubeadm state if initialized
+      ansible.builtin.command: kubeadm reset -f
+      register: kubeadm_reset
+      changed_when: kubeadm_reset.rc == 0
+      failed_when: false
+
+    - name: Stop and disable kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Stop and disable containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      failed_when: false
+
+    - name: Remove Kubernetes package holds
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+      failed_when: false
+
+    - name: Purge Kubernetes and containerd packages
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+          - containerd.io
+        state: absent
+        purge: true
+        autoremove: true
+
+    - name: Optionally remove prerequisite packages
+      ansible.builtin.apt:
+        name: "{{ prerequisite_packages }}"
+        state: absent
+        purge: true
+        autoremove: true
+      when: remove_prerequisite_packages | bool
+
+    - name: Remove Kubernetes and containerd directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/etcd
+        - /var/lib/kubelet
+        - /etc/cni
+        - /opt/cni
+        - /var/lib/cni
+        - /etc/containerd
+        - /run/containerd
+        - /root/.kube
+        - /root/kubeadm-config.yaml
+        - /root/calico-custom-resources.yaml
+
+    - name: Look up SSH user home directory
+      ansible.builtin.command: "getent passwd {{ ansible_user }}"
+      register: ssh_user_passwd
+      changed_when: false
+      failed_when: false
+      when: ansible_user != 'root'
+
+    - name: Remove kubeconfig for SSH user
+      ansible.builtin.file:
+        path: "{{ ssh_user_passwd.stdout.split(':')[5] }}/.kube"
+        state: absent
+      when:
+        - ansible_user != 'root'
+        - ssh_user_passwd.rc == 0
+        - ssh_user_passwd.stdout | length > 0
+
+    - name: Remove Helm binary and unpacked archive
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/bin/helm
+        - /tmp/helm.tgz
+        - /tmp/linux-amd64
+        - /tmp/linux-arm64
+
+    - name: Remove containerd systemd override
+      ansible.builtin.file:
+        path: /etc/systemd/system/containerd.service.d
+        state: absent
+
+    - name: Remove Kubernetes and Docker apt repositories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/kubernetes.list
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/keyrings/kubernetes-apt-keyring.asc
+        - /etc/apt/keyrings/kubernetes-apt-keyring.gpg~
+        - /etc/apt/keyrings/docker.asc
+        - /etc/apt/keyrings/docker.asc~
+
+    - name: Remove Kubernetes kernel module and sysctl drop-ins
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/modules-load.d/k8s.conf
+        - /etc/sysctl.d/99-kubernetes-cri.conf
+
+    - name: Remove leftover CNI interfaces if present
+      ansible.builtin.shell: |
+        ip link delete cni0 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        ip link delete vxlan.calico 2>/dev/null || true
+        ip link delete kube-ipvs0 2>/dev/null || true
+      changed_when: false
+
+    - name: Reload systemd after removing unit overrides
+      ansible.builtin.command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Refresh apt cache after repository removal
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0
+
+    - name: Reapply sysctl settings after removing drop-ins
+      ansible.builtin.command: sysctl --system
+      changed_when: false

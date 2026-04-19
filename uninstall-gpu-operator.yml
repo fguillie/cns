@@ -1,0 +1,42 @@
+---
+- name: Resolve component versions from CNS snapshot
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load component versions from CNS snapshot
+      ansible.builtin.include_tasks: tasks/parse_snapshot.yml
+
+- name: Remove Helm-installed GPU Operator
+  hosts: "{{ groups['kube_control_plane'][0] }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check whether Helm binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/helm
+      register: helm_binary
+
+    - name: Check whether admin kubeconfig exists
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: admin_kubeconfig
+
+    - name: Uninstall NVIDIA GPU Operator release
+      ansible.builtin.command:
+        cmd: /usr/local/bin/helm uninstall gpu-operator --namespace {{ gpu_operator_namespace }}
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: gpu_operator_uninstall
+      changed_when: gpu_operator_uninstall.rc == 0
+      failed_when: false
+      when:
+        - helm_binary.stat.exists
+        - admin_kubeconfig.stat.exists
+
+    - name: Remove GPU Operator namespace
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf delete namespace {{ gpu_operator_namespace }} --ignore-not-found=true
+      register: gpu_operator_namespace_delete
+      changed_when: gpu_operator_namespace_delete.rc == 0
+      failed_when: false
+      when: admin_kubeconfig.stat.exists

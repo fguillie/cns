@@ -1,0 +1,98 @@
+---
+- name: Check whether the selected CNS snapshot exists
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: cns_version_snapshot
+
+- name: Fail when the selected CNS snapshot is missing
+  ansible.builtin.assert:
+    that:
+      - cns_version_snapshot.stat.exists
+    fail_msg: "CNS snapshot file {{ cns_version_file }} was not found in the repository root."
+
+- name: Parse kubeadm version from CNS snapshot
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-F:"
+      - '/^- kubeadm/ {gsub(/^ /, "", $2); print $2; exit}'
+      - "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: kubeadm_version_cmd
+  changed_when: false
+
+- name: Parse Kubernetes version from CNS snapshot
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-F:"
+      - '/^- Kubernetes/ {gsub(/^ /, "", $2); print $2; exit}'
+      - "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: kubernetes_version_cmd
+  changed_when: false
+
+- name: Parse containerd version from CNS snapshot
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-F:"
+      - '/^- containerd/ {gsub(/^ /, "", $2); print $2; exit}'
+      - "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: containerd_version_cmd
+  changed_when: false
+
+- name: Parse Calico version from CNS snapshot
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-F:"
+      - '/^- Calico CNI/ {gsub(/^ /, "", $2); print $2; exit}'
+      - "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: calico_version_cmd
+  changed_when: false
+
+- name: Parse Helm version from CNS snapshot
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-F:"
+      - '/^- Helm/ {gsub(/^ /, "", $2); print $2; exit}'
+      - "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: helm_version_cmd
+  changed_when: false
+
+- name: Parse GPU Operator version from CNS snapshot
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-F:"
+      - '/^- NVIDIA GPU Operator/ {gsub(/^ /, "", $2); print $2; exit}'
+      - "{{ playbook_dir }}/{{ cns_version_file }}"
+  register: gpu_operator_version_cmd
+  changed_when: false
+
+- name: Store parsed component versions
+  ansible.builtin.set_fact:
+    kubeadm_version: "{{ kubeadm_version_cmd.stdout | trim }}"
+    kubernetes_version: "{{ kubernetes_version_cmd.stdout | trim }}"
+    containerd_version: "{{ containerd_version_cmd.stdout | trim }}"
+    calico_version: "{{ calico_version_cmd.stdout | trim }}"
+    helm_version: "{{ helm_version_cmd.stdout | trim }}"
+    gpu_operator_version: "{{ gpu_operator_version_cmd.stdout | trim }}"
+
+- name: Derive package repository versions
+  ansible.builtin.set_fact:
+    kubernetes_minor_version: "{{ kubernetes_version | regex_replace('^(v[0-9]+\\.[0-9]+)\\.[0-9]+$', '\\1') }}"
+    kubernetes_package_prefix: "{{ kubernetes_version | regex_replace('^v', '') }}"
+    containerd_package_prefix: "{{ containerd_version | regex_replace('^v', '') }}"
+
+- name: Validate parsed component versions
+  ansible.builtin.assert:
+    that:
+      - kubeadm_version | length > 0
+      - kubernetes_version | length > 0
+      - containerd_version | length > 0
+      - calico_version | length > 0
+      - helm_version | length > 0
+      - gpu_operator_version | length > 0
+      - kubeadm_version == kubernetes_version
+    fail_msg: "Unable to parse a complete and consistent version set from {{ cns_version_file }}."
