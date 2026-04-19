@@ -16,12 +16,12 @@ Usage:
   ./cns.sh help
 
 Commands:
-  install               Run the full deployment (kubernetes.yml, then gpu-operator.yml).
-  install-kubernetes    Run only the Kubernetes and Calico deployment playbook (kubernetes.yml).
-  install-gpu-operator  Run only the Helm and NVIDIA GPU Operator deployment playbook (gpu-operator.yml).
-  uninstall             Run the full teardown (uninstall-gpu-operator.yml, then uninstall-kubernetes.yml).
-  uninstall-gpu-operator  Run only the NVIDIA GPU Operator teardown playbook (uninstall-gpu-operator.yml).
-  uninstall-kubernetes  Run the Calico and Kubernetes teardown playbook (uninstall-kubernetes.yml).
+  install               Run the full deployment (playbooks/kubernetes.yml, then playbooks/gpu-operator.yml).
+  install-kubernetes    Run only the Kubernetes and Calico deployment playbook (playbooks/kubernetes.yml).
+  install-gpu-operator  Run only the Helm and NVIDIA GPU Operator deployment playbook (playbooks/gpu-operator.yml).
+  uninstall             Run the full teardown (playbooks/uninstall-gpu-operator.yml, then playbooks/uninstall-kubernetes.yml).
+  uninstall-gpu-operator  Run only the NVIDIA GPU Operator teardown playbook (playbooks/uninstall-gpu-operator.yml).
+  uninstall-kubernetes  Run the Calico and Kubernetes teardown playbook (playbooks/uninstall-kubernetes.yml).
   help                  Show this help message.
 
 Examples:
@@ -48,22 +48,22 @@ shift
 
 case "$command" in
   install)
-    exec ansible-playbook "${SCRIPT_DIR}/playbook.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/playbook.yml" "$@"
     ;;
   install-kubernetes)
-    exec ansible-playbook "${SCRIPT_DIR}/kubernetes.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/kubernetes.yml" "$@"
     ;;
   install-gpu-operator)
-    exec ansible-playbook "${SCRIPT_DIR}/gpu-operator.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/gpu-operator.yml" "$@"
     ;;
   uninstall)
-    exec ansible-playbook "${SCRIPT_DIR}/uninstall.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall.yml" "$@"
     ;;
   uninstall-gpu-operator)
-    exec ansible-playbook "${SCRIPT_DIR}/uninstall-gpu-operator.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall-gpu-operator.yml" "$@"
     ;;
   uninstall-kubernetes)
-    exec ansible-playbook "${SCRIPT_DIR}/uninstall-kubernetes.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall-kubernetes.yml" "$@"
     ;;
   help|-h|--help)
     if [[ $# -gt 0 ]]; then

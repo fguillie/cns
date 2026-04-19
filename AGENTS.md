@@ -5,16 +5,18 @@ Canonical GitHub repository: `https://github.com/fguillie/cns.git`
 ## Project Structure & Module Organization
 This repository is an Ansible project for provisioning and tearing down a kubeadm-based Kubernetes cluster on Ubuntu with versions pinned by checked-in `cns_versions/cns-v*.txt` snapshots.
 
-- `playbook.yml`: full install entry point; imports `kubernetes.yml` and then `gpu-operator.yml`.
-- `kubernetes.yml`: Kubernetes install path; parses the selected `cns_version_file`, installs pinned Kubernetes and containerd packages, bootstraps the first control-plane node, installs Calico, labels the first control-plane node as a worker, removes its `NoSchedule` taint, and generates the worker join command.
-- `gpu-operator.yml`: GPU Operator install path; parses the selected `cns_version_file`, installs pinned Helm, and deploys the NVIDIA GPU Operator onto an existing cluster.
+- `playbooks/`: playbook directory containing the split install and teardown entry points.
+- `playbooks/playbook.yml`: full install entry point; imports `playbooks/kubernetes.yml` and then `playbooks/gpu-operator.yml`.
+- `playbooks/kubernetes.yml`: Kubernetes install path; parses the selected `cns_version_file`, installs pinned Kubernetes and containerd packages, bootstraps the first control-plane node, installs Calico, labels the first control-plane node as a worker, removes its `NoSchedule` taint, and generates the worker join command.
+- `playbooks/gpu-operator.yml`: GPU Operator install path; parses the selected `cns_version_file`, installs pinned Helm, and deploys the NVIDIA GPU Operator onto an existing cluster.
 - `tasks/parse_snapshot.yml`: shared task include that parses the selected `cns_version_file` and derives version facts for install playbooks.
-- `uninstall.yml`: full teardown entry point; imports `uninstall-gpu-operator.yml` and then `uninstall-kubernetes.yml`.
-- `uninstall-gpu-operator.yml`: GPU Operator teardown path; removes the Helm release and operator namespace from an existing cluster.
-- `uninstall-kubernetes.yml`: Kubernetes teardown path; removes Calico, runs `kubeadm reset`, purges Kubernetes and containerd packages, removes repo-managed config plus local Helm artifacts, drops apt repositories, and reloads systemd and sysctl state.
+- `playbooks/uninstall.yml`: full teardown entry point; imports `playbooks/uninstall-gpu-operator.yml` and then `playbooks/uninstall-kubernetes.yml`.
+- `playbooks/uninstall-gpu-operator.yml`: GPU Operator teardown path; removes the Helm release and operator namespace from an existing cluster.
+- `playbooks/uninstall-kubernetes.yml`: Kubernetes teardown path; removes Calico, runs `kubeadm reset`, purges Kubernetes and containerd packages, removes repo-managed config plus local Helm artifacts, drops apt repositories, and reloads systemd and sysctl state.
 - `cns.sh`: preferred operator entry point for `install`, `install-kubernetes`, `install-gpu-operator`, `uninstall`, `uninstall-gpu-operator`, `uninstall-kubernetes`, and `help`; passes additional arguments straight through to `ansible-playbook`.
 - `group_vars/all.yml`: cluster-wide defaults, including the default `cns_version_file` (`cns_versions/cns-v1.34.6.txt`), pod and service CIDRs, architecture maps, CRI socket, `control_plane_endpoint`, and GPU Operator namespace.
 - `inventory/hosts.ini`: inventory groups and host connection variables. The default layout is one control-plane node plus optional workers.
+- `cns_versions/`: checked-in CNS component version snapshots used by the install and teardown playbooks.
 - `cns_versions/cns-v*.txt`: verified component version snapshots such as `cns_versions/cns-v1.34.6.txt` and `cns_versions/cns-v1.35.3.txt`.
 - `ansible.cfg`: local Ansible defaults for inventory selection, host key checking, retry files, interpreter detection, and SSH pipelining.
 - `README.md`: operator-facing usage and version matrix. Keep it aligned with wrapper behavior and supported snapshots.
@@ -32,14 +34,14 @@ Run commands from the repository root.
 - `./cns.sh uninstall-gpu-operator`: remove only the NVIDIA GPU Operator release and namespace.
 - `./cns.sh uninstall-kubernetes`: remove Calico, Kubernetes, containerd state, and local Helm artifacts.
 - `./cns.sh help`: show wrapper usage and examples.
-- `ansible-playbook --syntax-check playbook.yml`: validate install playbook syntax.
-- `ansible-playbook --syntax-check kubernetes.yml`: validate the Kubernetes install playbook syntax.
-- `ansible-playbook --syntax-check gpu-operator.yml`: validate the GPU Operator playbook syntax.
-- `ansible-playbook --syntax-check uninstall.yml`: validate teardown playbook syntax.
-- `ansible-playbook --syntax-check uninstall-gpu-operator.yml`: validate the GPU Operator teardown playbook syntax.
-- `ansible-playbook --syntax-check uninstall-kubernetes.yml`: validate the Kubernetes teardown playbook syntax.
-- `ansible-playbook playbook.yml --check`: dry-run supported install tasks.
-- `ansible-playbook uninstall.yml --check`: dry-run supported teardown tasks when changing idempotent removal logic.
+- `ansible-playbook --syntax-check playbooks/playbook.yml`: validate install playbook syntax.
+- `ansible-playbook --syntax-check playbooks/kubernetes.yml`: validate the Kubernetes install playbook syntax.
+- `ansible-playbook --syntax-check playbooks/gpu-operator.yml`: validate the GPU Operator playbook syntax.
+- `ansible-playbook --syntax-check playbooks/uninstall.yml`: validate teardown playbook syntax.
+- `ansible-playbook --syntax-check playbooks/uninstall-gpu-operator.yml`: validate the GPU Operator teardown playbook syntax.
+- `ansible-playbook --syntax-check playbooks/uninstall-kubernetes.yml`: validate the Kubernetes teardown playbook syntax.
+- `ansible-playbook playbooks/playbook.yml --check`: dry-run supported install tasks.
+- `ansible-playbook playbooks/uninstall.yml --check`: dry-run supported teardown tasks when changing idempotent removal logic.
 - `ansible-inventory --list`: confirm inventory parsing and group membership under `ansible.cfg`.
 
 Keep `cns.sh`, `README.md`, and `AGENTS.md` in sync when changing entry points, defaults, or supported operator flows.

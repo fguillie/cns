@@ -4,7 +4,7 @@
   gather_facts: false
   tasks:
     - name: Load component versions from CNS snapshot
-      ansible.builtin.include_tasks: tasks/parse_snapshot.yml
+      ansible.builtin.include_tasks: ../tasks/parse_snapshot.yml
 
 - name: Install Helm and the NVIDIA GPU Operator
   hosts: "{{ groups['kube_control_plane'][0] }}"
@@ -26,7 +26,7 @@
       ansible.builtin.assert:
         that:
           - kubernetes_admin_conf.stat.exists
-        fail_msg: "Kubernetes is not initialized on {{ inventory_hostname }}. Run kubernetes.yml first."
+        fail_msg: "Kubernetes is not initialized on {{ inventory_hostname }}. Run playbooks/kubernetes.yml first."
 
     - name: Download pinned Helm archive
       ansible.builtin.get_url:

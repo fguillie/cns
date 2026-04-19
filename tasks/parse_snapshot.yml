@@ -1,7 +1,7 @@
 ---
 - name: Check whether the selected CNS snapshot exists
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/{{ cns_version_file }}"
+    path: "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: cns_version_snapshot
 
 - name: Fail when the selected CNS snapshot is missing
@@ -16,7 +16,7 @@
       - awk
       - "-F:"
       - '/^- kubeadm/ {gsub(/^ /, "", $2); print $2; exit}'
-      - "{{ playbook_dir }}/{{ cns_version_file }}"
+      - "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: kubeadm_version_cmd
   changed_when: false
 
@@ -26,7 +26,7 @@
       - awk
       - "-F:"
       - '/^- Kubernetes/ {gsub(/^ /, "", $2); print $2; exit}'
-      - "{{ playbook_dir }}/{{ cns_version_file }}"
+      - "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: kubernetes_version_cmd
   changed_when: false
 
@@ -36,7 +36,7 @@
       - awk
       - "-F:"
       - '/^- containerd/ {gsub(/^ /, "", $2); print $2; exit}'
-      - "{{ playbook_dir }}/{{ cns_version_file }}"
+      - "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: containerd_version_cmd
   changed_when: false
 
@@ -46,7 +46,7 @@
       - awk
       - "-F:"
       - '/^- Calico CNI/ {gsub(/^ /, "", $2); print $2; exit}'
-      - "{{ playbook_dir }}/{{ cns_version_file }}"
+      - "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: calico_version_cmd
   changed_when: false
 
@@ -56,7 +56,7 @@
       - awk
       - "-F:"
       - '/^- Helm/ {gsub(/^ /, "", $2); print $2; exit}'
-      - "{{ playbook_dir }}/{{ cns_version_file }}"
+      - "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: helm_version_cmd
   changed_when: false
 
@@ -66,7 +66,7 @@
       - awk
       - "-F:"
       - '/^- NVIDIA GPU Operator/ {gsub(/^ /, "", $2); print $2; exit}'
-      - "{{ playbook_dir }}/{{ cns_version_file }}"
+      - "{{ playbook_dir }}/../{{ cns_version_file }}"
   register: gpu_operator_version_cmd
   changed_when: false
 
