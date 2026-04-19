@@ -1,0 +1,550 @@
+---
+- name: Resolve component versions from CNS snapshot
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check whether the selected CNS snapshot exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: cns_version_snapshot
+
+    - name: Fail when the selected CNS snapshot is missing
+      ansible.builtin.assert:
+        that:
+          - cns_version_snapshot.stat.exists
+        fail_msg: "CNS snapshot file {{ cns_version_file }} was not found in the repository root."
+
+    - name: Parse kubeadm version from CNS snapshot
+      ansible.builtin.command:
+        argv:
+          - awk
+          - "-F:"
+          - '/^- kubeadm/ {gsub(/^ /, "", $2); print $2; exit}'
+          - "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: kubeadm_version_cmd
+      changed_when: false
+
+    - name: Parse Kubernetes version from CNS snapshot
+      ansible.builtin.command:
+        argv:
+          - awk
+          - "-F:"
+          - '/^- Kubernetes/ {gsub(/^ /, "", $2); print $2; exit}'
+          - "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: kubernetes_version_cmd
+      changed_when: false
+
+    - name: Parse containerd version from CNS snapshot
+      ansible.builtin.command:
+        argv:
+          - awk
+          - "-F:"
+          - '/^- containerd/ {gsub(/^ /, "", $2); print $2; exit}'
+          - "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: containerd_version_cmd
+      changed_when: false
+
+    - name: Parse Calico version from CNS snapshot
+      ansible.builtin.command:
+        argv:
+          - awk
+          - "-F:"
+          - '/^- Calico CNI/ {gsub(/^ /, "", $2); print $2; exit}'
+          - "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: calico_version_cmd
+      changed_when: false
+
+    - name: Parse Helm version from CNS snapshot
+      ansible.builtin.command:
+        argv:
+          - awk
+          - "-F:"
+          - '/^- Helm/ {gsub(/^ /, "", $2); print $2; exit}'
+          - "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: helm_version_cmd
+      changed_when: false
+
+    - name: Parse GPU Operator version from CNS snapshot
+      ansible.builtin.command:
+        argv:
+          - awk
+          - "-F:"
+          - '/^- NVIDIA GPU Operator/ {gsub(/^ /, "", $2); print $2; exit}'
+          - "{{ playbook_dir }}/{{ cns_version_file }}"
+      register: gpu_operator_version_cmd
+      changed_when: false
+
+    - name: Store parsed component versions
+      ansible.builtin.set_fact:
+        kubeadm_version: "{{ kubeadm_version_cmd.stdout | trim }}"
+        kubernetes_version: "{{ kubernetes_version_cmd.stdout | trim }}"
+        containerd_version: "{{ containerd_version_cmd.stdout | trim }}"
+        calico_version: "{{ calico_version_cmd.stdout | trim }}"
+        helm_version: "{{ helm_version_cmd.stdout | trim }}"
+        gpu_operator_version: "{{ gpu_operator_version_cmd.stdout | trim }}"
+
+    - name: Derive package repository versions
+      ansible.builtin.set_fact:
+        kubernetes_minor_version: "{{ kubernetes_version | regex_replace('^(v[0-9]+\\.[0-9]+)\\.[0-9]+$', '\\1') }}"
+        kubernetes_package_prefix: "{{ kubernetes_version | regex_replace('^v', '') }}"
+        containerd_package_prefix: "{{ containerd_version | regex_replace('^v', '') }}"
+
+    - name: Validate parsed component versions
+      ansible.builtin.assert:
+        that:
+          - kubeadm_version | length > 0
+          - kubernetes_version | length > 0
+          - containerd_version | length > 0
+          - calico_version | length > 0
+          - helm_version | length > 0
+          - gpu_operator_version | length > 0
+          - kubeadm_version == kubernetes_version
+        fail_msg: "Unable to parse a complete and consistent version set from {{ cns_version_file }}."
+
+- name: Prepare Kubernetes nodes
+  hosts: kube_control_plane:kube_node
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Enforce Ubuntu target hosts
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+        fail_msg: This playbook currently supports Ubuntu hosts only.
+
+    - name: Install prerequisite packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+          - software-properties-common
+          - tar
+        state: present
+        update_cache: true
+
+    - name: Disable swap immediately
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+
+    - name: Disable swap in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s+.*)$'
+        replace: '# \1'
+
+    - name: Ensure kernel modules are configured for Kubernetes
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        mode: "0644"
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Load overlay module
+      ansible.builtin.command: modprobe overlay
+      changed_when: false
+
+    - name: Load br_netfilter module
+      ansible.builtin.command: modprobe br_netfilter
+      changed_when: false
+
+    - name: Configure sysctl settings for Kubernetes networking
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        mode: "0644"
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+    - name: Ensure apt keyring directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker apt repository key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ docker_repo_arch_map[ansible_architecture] }}
+          signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+
+    - name: Refresh apt cache after Docker repo configuration
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0
+
+    - name: Resolve pinned containerd package version
+      ansible.builtin.shell: >-
+        apt-cache madison containerd.io |
+        awk '{print $3}' |
+        grep '^{{ hostvars["localhost"].containerd_package_prefix | regex_escape }}-' |
+        head -n1
+      register: containerd_package_version
+      changed_when: false
+      failed_when: containerd_package_version.stdout | trim == ""
+
+    - name: Install pinned containerd from Docker repository
+      ansible.builtin.apt:
+        name: "containerd.io={{ containerd_package_version.stdout | trim }}"
+        state: present
+
+    - name: Ensure containerd systemd override directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/containerd.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Force systemd to use packaged containerd binary
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/containerd.service.d/override.conf
+        mode: "0644"
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/containerd
+
+    - name: Create Kubernetes-compatible default containerd config
+      ansible.builtin.shell: /usr/bin/containerd config default > /etc/containerd/config.toml
+      changed_when: true
+
+    - name: Use systemd cgroups for containerd
+      ansible.builtin.replace:
+        path: /etc/containerd/config.toml
+        regexp: '^(\s*)SystemdCgroup = false'
+        replace: '\1SystemdCgroup = true'
+
+    - name: Ensure CRI plugin is enabled in containerd
+      ansible.builtin.replace:
+        path: /etc/containerd/config.toml
+        regexp: '^disabled_plugins = \["cri"\]'
+        replace: 'disabled_plugins = []'
+
+    - name: Enable and restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+    - name: Add Kubernetes apt repository key
+      ansible.builtin.get_url:
+        url: "https://pkgs.k8s.io/core:/stable:/{{ hostvars['localhost'].kubernetes_minor_version }}/deb/Release.key"
+        dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+        mode: "0644"
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc]
+          https://pkgs.k8s.io/core:/stable:/{{ hostvars['localhost'].kubernetes_minor_version }}/deb/ /
+        filename: kubernetes
+        state: present
+
+    - name: Refresh apt cache after Kubernetes repo configuration
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0
+
+    - name: Resolve pinned kubeadm package version
+      ansible.builtin.shell: >-
+        apt-cache madison kubeadm |
+        awk '{print $3}' |
+        grep '^{{ hostvars["localhost"].kubernetes_package_prefix | regex_escape }}-' |
+        head -n1
+      register: kubeadm_package_version
+      changed_when: false
+      failed_when: kubeadm_package_version.stdout | trim == ""
+
+    - name: Install pinned kubeadm, kubelet, and kubectl
+      ansible.builtin.apt:
+        name:
+          - "kubelet={{ kubeadm_package_version.stdout | trim }}"
+          - "kubeadm={{ kubeadm_package_version.stdout | trim }}"
+          - "kubectl={{ kubeadm_package_version.stdout | trim }}"
+        state: present
+
+    - name: Hold Kubernetes packages
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Enable kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        enabled: true
+        state: started
+
+- name: Bootstrap the first control plane node
+  hosts: kube_control_plane
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Build kubeadm configuration
+      ansible.builtin.copy:
+        dest: /root/kubeadm-config.yaml
+        mode: "0600"
+        content: |
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: InitConfiguration
+          localAPIEndpoint:
+            advertiseAddress: {{ ansible_host | default(ansible_default_ipv4.address) }}
+            bindPort: 6443
+          nodeRegistration:
+            criSocket: {{ kubeadm_cri_socket }}
+          ---
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: ClusterConfiguration
+          kubernetesVersion: {{ hostvars['localhost'].kubernetes_version }}
+          {% if control_plane_endpoint | length > 0 %}
+          controlPlaneEndpoint: {{ control_plane_endpoint }}
+          {% endif %}
+          networking:
+            podSubnet: {{ pod_network_cidr }}
+            serviceSubnet: {{ service_cidr }}
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Initialize Kubernetes control plane
+      ansible.builtin.command:
+        cmd: kubeadm init --config=/root/kubeadm-config.yaml --upload-certs
+        creates: /etc/kubernetes/admin.conf
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Ensure root kubeconfig directory exists
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        mode: "0700"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Copy admin kubeconfig for root
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        mode: "0600"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Look up SSH user home directory
+      ansible.builtin.command: "getent passwd {{ ansible_user }}"
+      register: ssh_user_passwd
+      changed_when: false
+      when:
+        - inventory_hostname == groups['kube_control_plane'][0]
+        - ansible_user != 'root'
+
+    - name: Set SSH user home directory fact
+      ansible.builtin.set_fact:
+        ssh_user_home: "{{ ssh_user_passwd.stdout.split(':')[5] }}"
+      when:
+        - inventory_hostname == groups['kube_control_plane'][0]
+        - ansible_user != 'root'
+
+    - name: Ensure kubeconfig directory exists for SSH user
+      ansible.builtin.file:
+        path: "{{ ssh_user_home }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0700"
+      when:
+        - inventory_hostname == groups['kube_control_plane'][0]
+        - ansible_user != 'root'
+
+    - name: Copy admin kubeconfig for SSH user
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ ssh_user_home }}/.kube/config"
+        remote_src: true
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+      when:
+        - inventory_hostname == groups['kube_control_plane'][0]
+        - ansible_user != 'root'
+
+    - name: Wait for Kubernetes API server
+      ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
+      register: kube_api_ready
+      retries: 20
+      delay: 15
+      until: kube_api_ready.rc == 0
+      changed_when: false
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Resolve Kubernetes node name for the first control-plane host
+      ansible.builtin.command:
+        cmd: >-
+          sh -c
+          "kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes -o wide |
+          awk '$6 == \"{{ ansible_host | default(ansible_default_ipv4.address) }}\" {print $1; exit}'"
+      register: kubernetes_node_name
+      changed_when: false
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Ensure the Kubernetes node name was resolved
+      ansible.builtin.assert:
+        that:
+          - kubernetes_node_name.stdout | trim | length > 0
+        fail_msg: "Could not resolve the Kubernetes node name for {{ inventory_hostname }}."
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Label the first control plane node as a worker
+      ansible.builtin.command:
+        cmd: >-
+          kubectl --kubeconfig=/etc/kubernetes/admin.conf label node
+          {{ kubernetes_node_name.stdout | trim }} node-role.kubernetes.io/worker= --overwrite
+      register: worker_label_result
+      changed_when: "'labeled' in worker_label_result.stdout"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Remove the control-plane NoSchedule taint from the first node
+      ansible.builtin.command:
+        cmd: >-
+          kubectl --kubeconfig=/etc/kubernetes/admin.conf taint nodes
+          {{ kubernetes_node_name.stdout | trim }} node-role.kubernetes.io/control-plane:NoSchedule-
+      register: control_plane_taint_result
+      changed_when: "'untainted' in control_plane_taint_result.stdout"
+      failed_when: >-
+        control_plane_taint_result.rc != 0 and
+        'not found' not in (control_plane_taint_result.stderr | lower)
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Render Calico custom resources
+      ansible.builtin.copy:
+        dest: /root/calico-custom-resources.yaml
+        mode: "0644"
+        content: |
+          apiVersion: operator.tigera.io/v1
+          kind: Installation
+          metadata:
+            name: default
+          spec:
+            calicoNetwork:
+              ipPools:
+              - blockSize: 26
+                cidr: {{ pod_network_cidr }}
+                encapsulation: VXLANCrossSubnet
+                natOutgoing: Enabled
+                nodeSelector: all()
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Install Calico operator
+      ansible.builtin.command:
+        cmd: >-
+          kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f
+          https://raw.githubusercontent.com/projectcalico/calico/{{ hostvars['localhost'].calico_version }}/manifests/tigera-operator.yaml
+      register: calico_operator_apply
+      changed_when: "'created' in calico_operator_apply.stdout or 'configured' in calico_operator_apply.stdout"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Wait for Calico Installation CRD
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf get crd installations.operator.tigera.io
+      register: calico_installation_crd
+      retries: 20
+      delay: 6
+      until: calico_installation_crd.rc == 0
+      changed_when: false
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Install Calico custom resources
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /root/calico-custom-resources.yaml
+      register: calico_resources_apply
+      changed_when: "'created' in calico_resources_apply.stdout or 'configured' in calico_resources_apply.stdout"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Download pinned Helm archive
+      ansible.builtin.get_url:
+        url: >-
+          https://get.helm.sh/helm-{{ hostvars['localhost'].helm_version }}-linux-{{
+          helm_arch_map[ansible_architecture] }}.tar.gz
+        dest: /tmp/helm.tgz
+        mode: "0644"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Extract pinned Helm archive
+      ansible.builtin.unarchive:
+        src: /tmp/helm.tgz
+        dest: /tmp
+        remote_src: true
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Install pinned Helm binary
+      ansible.builtin.copy:
+        src: "/tmp/linux-{{ helm_arch_map[ansible_architecture] }}/helm"
+        dest: /usr/local/bin/helm
+        remote_src: true
+        mode: "0755"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Add NVIDIA Helm repository
+      ansible.builtin.command:
+        cmd: /usr/local/bin/helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: helm_repo_add
+      changed_when: "'has been added' in helm_repo_add.stdout"
+      failed_when: false
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Update Helm repositories
+      ansible.builtin.command:
+        cmd: /usr/local/bin/helm repo update
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Install pinned NVIDIA GPU Operator
+      ansible.builtin.shell: >-
+        /usr/local/bin/helm upgrade --install gpu-operator nvidia/gpu-operator
+        --namespace {{ gpu_operator_namespace }} --create-namespace
+        --version={{ hostvars['localhost'].gpu_operator_version }}
+        --set-json 'node-feature-discovery.gc.tolerations=[{"key":"node-role.kubernetes.io/control-plane","operator":"Equal","value":"","effect":"NoSchedule"}]'
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: gpu_operator_install
+      changed_when: "'STATUS: deployed' in gpu_operator_install.stdout or 'STATUS: pending-install' in gpu_operator_install.stdout"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Generate kubeadm join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: kubeadm_join_raw
+      changed_when: false
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+    - name: Publish kubeadm join command
+      ansible.builtin.set_fact:
+        kubeadm_join_command: "{{ kubeadm_join_raw.stdout }} --cri-socket {{ kubeadm_cri_socket }}"
+      when: inventory_hostname == groups['kube_control_plane'][0]
+
+- name: Join worker nodes to the cluster
+  hosts: kube_node
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Join worker node
+      ansible.builtin.command:
+        cmd: "{{ hostvars[groups['kube_control_plane'][0]].kubeadm_join_command }}"
+        creates: /etc/kubernetes/kubelet.conf

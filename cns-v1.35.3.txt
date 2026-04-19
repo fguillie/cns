@@ -1,0 +1,16 @@
+Kubernetes / CNS version snapshot
+Date: 2026-04-19
+
+- kubeadm: v1.35.3
+- Kubernetes: v1.35.3
+- containerd: v2.2.3
+- Calico CNI: v3.31.4
+- Helm: v4.1.4
+- NVIDIA GPU Operator: v26.3.1
+
+Sources:
+- https://kubernetes.io/releases/
+- https://github.com/containerd/containerd/releases
+- https://github.com/projectcalico/calico/releases
+- https://github.com/helm/helm/releases
+- https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/release-notes.html
