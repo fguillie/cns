@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_VARS_FILE="${SCRIPT_DIR}/group_vars/all.yml"
 
 show_help() {
   cat <<'EOF'
@@ -48,22 +49,22 @@ shift
 
 case "$command" in
   install)
-    exec ansible-playbook "${SCRIPT_DIR}/playbooks/playbook.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/playbook.yml" -e "@${COMMON_VARS_FILE}" "$@"
     ;;
   install-kubernetes)
-    exec ansible-playbook "${SCRIPT_DIR}/playbooks/kubernetes.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/kubernetes.yml" -e "@${COMMON_VARS_FILE}" "$@"
     ;;
   install-gpu-operator)
-    exec ansible-playbook "${SCRIPT_DIR}/playbooks/gpu-operator.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/gpu-operator.yml" -e "@${COMMON_VARS_FILE}" "$@"
     ;;
   uninstall)
-    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall.yml" -e "@${COMMON_VARS_FILE}" "$@"
     ;;
   uninstall-gpu-operator)
-    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall-gpu-operator.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall-gpu-operator.yml" -e "@${COMMON_VARS_FILE}" "$@"
     ;;
   uninstall-kubernetes)
-    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall-kubernetes.yml" "$@"
+    exec ansible-playbook "${SCRIPT_DIR}/playbooks/uninstall-kubernetes.yml" -e "@${COMMON_VARS_FILE}" "$@"
     ;;
   help|-h|--help)
     if [[ $# -gt 0 ]]; then

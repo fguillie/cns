@@ -6,11 +6,11 @@ Canonical GitHub repository: `https://github.com/fguillie/cns.git`
 This repository is an Ansible project for provisioning and tearing down a kubeadm-based Kubernetes cluster on Ubuntu with versions pinned by checked-in `cns_versions/cns-v*.txt` snapshots.
 
 - `playbooks/`: playbook directory containing the split install and teardown entry points.
-- `playbooks/playbook.yml`: full install entry point; imports `playbooks/kubernetes.yml` and then `playbooks/gpu-operator.yml`.
+- `playbooks/playbook.yml`: full install entry point; imports sibling playbooks `kubernetes.yml` and then `gpu-operator.yml`.
 - `playbooks/kubernetes.yml`: Kubernetes install path; parses the selected `cns_version_file`, installs pinned Kubernetes and containerd packages, bootstraps the first control-plane node, installs Calico, labels the first control-plane node as a worker, removes its `NoSchedule` taint, and generates the worker join command.
 - `playbooks/gpu-operator.yml`: GPU Operator install path; parses the selected `cns_version_file`, installs pinned Helm, and deploys the NVIDIA GPU Operator onto an existing cluster.
 - `playbooks/tasks/parse_snapshot.yml`: shared task include that parses the selected `cns_version_file` and derives version facts for install playbooks.
-- `playbooks/uninstall.yml`: full teardown entry point; imports `playbooks/uninstall-gpu-operator.yml` and then `playbooks/uninstall-kubernetes.yml`.
+- `playbooks/uninstall.yml`: full teardown entry point; imports sibling playbooks `uninstall-gpu-operator.yml` and then `uninstall-kubernetes.yml`.
 - `playbooks/uninstall-gpu-operator.yml`: GPU Operator teardown path; removes the Helm release and operator namespace from an existing cluster.
 - `playbooks/uninstall-kubernetes.yml`: Kubernetes teardown path; removes Calico, runs `kubeadm reset`, purges Kubernetes and containerd packages, removes repo-managed config plus local Helm artifacts, drops apt repositories, and reloads systemd and sysctl state.
 - `cns.sh`: preferred operator entry point for `install`, `install-kubernetes`, `install-gpu-operator`, `uninstall`, `uninstall-gpu-operator`, `uninstall-kubernetes`, and `help`; passes additional arguments straight through to `ansible-playbook`.
