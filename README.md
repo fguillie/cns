@@ -1,10 +1,17 @@
 # Kubernetes kubeadm Ansible Playbook
 
-This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with:
+This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pinned component versions selected from a `cns-v*.txt` snapshot.
 
-- the current upstream Kubernetes stable release resolved from `https://dl.k8s.io/release/stable.txt`
-- the latest `containerd.io` package from Docker's official Ubuntu repository
-- the latest Calico release tag resolved from the `projectcalico/calico` GitHub releases API
+## Version Matrix
+
+| Component | `cns-v1.34.6.txt` | `cns-v1.35.3.txt` |
+| --- | --- | --- |
+| kubeadm | `v1.34.6` | `v1.35.3` |
+| Kubernetes | `v1.34.6` | `v1.35.3` |
+| containerd | `v2.2.3` | `v2.2.3` |
+| Calico | `v3.31.4` | `v3.31.4` |
+| Helm | `v4.1.4` | `v4.1.4` |
+| GPU Operator | `v26.3.1` | `v26.3.1` |
 
 ## Files
 
