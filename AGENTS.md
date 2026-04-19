@@ -9,7 +9,7 @@ This repository is an Ansible project for provisioning and tearing down a kubead
 - `playbooks/playbook.yml`: full install entry point; imports `playbooks/kubernetes.yml` and then `playbooks/gpu-operator.yml`.
 - `playbooks/kubernetes.yml`: Kubernetes install path; parses the selected `cns_version_file`, installs pinned Kubernetes and containerd packages, bootstraps the first control-plane node, installs Calico, labels the first control-plane node as a worker, removes its `NoSchedule` taint, and generates the worker join command.
 - `playbooks/gpu-operator.yml`: GPU Operator install path; parses the selected `cns_version_file`, installs pinned Helm, and deploys the NVIDIA GPU Operator onto an existing cluster.
-- `tasks/parse_snapshot.yml`: shared task include that parses the selected `cns_version_file` and derives version facts for install playbooks.
+- `playbooks/tasks/parse_snapshot.yml`: shared task include that parses the selected `cns_version_file` and derives version facts for install playbooks.
 - `playbooks/uninstall.yml`: full teardown entry point; imports `playbooks/uninstall-gpu-operator.yml` and then `playbooks/uninstall-kubernetes.yml`.
 - `playbooks/uninstall-gpu-operator.yml`: GPU Operator teardown path; removes the Helm release and operator namespace from an existing cluster.
 - `playbooks/uninstall-kubernetes.yml`: Kubernetes teardown path; removes Calico, runs `kubeadm reset`, purges Kubernetes and containerd packages, removes repo-managed config plus local Helm artifacts, drops apt repositories, and reloads systemd and sysctl state.
@@ -22,6 +22,7 @@ This repository is an Ansible project for provisioning and tearing down a kubead
 - `README.md`: operator-facing usage and version matrix. Keep it aligned with wrapper behavior and supported snapshots.
 
 Keep new shared variables in `group_vars/` and host-specific connection data in `inventory/`. Preserve the current topology assumption that the first control-plane node is intentionally schedulable.
+Playbooks now live under `playbooks/`, so shared task includes should be referenced relative to that directory, for example `tasks/parse_snapshot.yml`.
 
 ## Build, Test, and Development Commands
 Run commands from the repository root.

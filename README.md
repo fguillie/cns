@@ -22,7 +22,7 @@ This project deploys a kubeadm-based Kubernetes cluster on Ubuntu hosts with pin
 - `playbooks/playbook.yml`: full deployment entry point that runs `playbooks/kubernetes.yml` and then `playbooks/gpu-operator.yml`
 - `playbooks/kubernetes.yml`: Kubernetes, containerd, kubeadm bootstrap, Calico, and worker join playbook
 - `playbooks/gpu-operator.yml`: Helm and NVIDIA GPU Operator playbook
-- `tasks/parse_snapshot.yml`: shared CNS snapshot parsing tasks used by both install playbooks
+- `playbooks/tasks/parse_snapshot.yml`: shared CNS snapshot parsing tasks used by both install playbooks
 - `playbooks/uninstall.yml`: full teardown entry point that runs `playbooks/uninstall-gpu-operator.yml` and then `playbooks/uninstall-kubernetes.yml`
 - `playbooks/uninstall-gpu-operator.yml`: NVIDIA GPU Operator teardown playbook
 - `playbooks/uninstall-kubernetes.yml`: Calico, Kubernetes, and containerd teardown playbook

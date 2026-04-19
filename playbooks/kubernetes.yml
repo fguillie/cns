@@ -4,7 +4,7 @@
   gather_facts: false
   tasks:
     - name: Load component versions from CNS snapshot
-      ansible.builtin.include_tasks: ../tasks/parse_snapshot.yml
+      ansible.builtin.include_tasks: tasks/parse_snapshot.yml
 
 - name: Prepare Kubernetes nodes
   hosts: kube_control_plane:kube_node
